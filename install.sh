@@ -1,170 +1,220 @@
 #!/bin/bash
 
-REAL_USER="$USER"
-OWNER=""
+set -e
 
-# Get the path & user from env
-if [ -n "$SUDO_USER" ]; then
-    echo "shell script execute by with sudo :  user is $SUDO_USER"
-    if [ "$SUDO_USER" = "runner" ]; then
-        # Définir USER_HOME spécifiquement pour \'runner\' et définir OWNER à \'pi\'
-        USER_HOME="/home/pi"
-        OWNER="pi"
+CREATED_FILES=()
+VARIABLES_EXISTED=false
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+step() {
+    echo -e "${YELLOW}Doing $1${NC}"
+}
+
+done_msg() {
+    echo -e "  ${GREEN}⤷ done${NC}"
+}
+
+exists_msg() {
+    echo -e "  ${BLUE}⤷ already exists${NC}"
+}
+
+warn_msg() {
+    echo -e "  ${YELLOW}⤷ $1${NC}"
+}
+
+error_msg() {
+    echo -e "  ${RED}⤷ $1${NC}"
+}
+
+check_environment() {
+    step "Checking environment"
+
+    if [ -n "$SUDO_USER" ]; then
+        if [ "$SUDO_USER" = "runner" ]; then
+            USER_HOME="/home/pi"
+            OWNER="pi"
+        else
+            USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+            OWNER="$SUDO_USER"
+        fi
     else
-        USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-        OWNER="$SUDO_USER"
+        USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
+        OWNER="$USER"
     fi
-else
-    USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
-    OWNER="$USER"
-    echo "shell script execute without sudo : user is $USER"
-fi
 
-echo "Real user: $REAL_USER"
-echo "User\'s home directory: $USER_HOME"
-echo "Owner for chown: $OWNER"
+    KLIPPER_DIR="$USER_HOME/klipper"
+    PROJECT_DIR="$PWD"
 
-# Define the Klipper directory using USER_HOME instead of HOME
-KLIPPER_DIR="$USER_HOME/klipper"
-echo "Klipper directory: $KLIPPER_DIR"
+    if [ ! -d "$KLIPPER_DIR/klippy/extras" ]; then
+        error_msg "Klipper extras directory not found: $KLIPPER_DIR/klippy/extras"
+        exit 1
+    fi
 
-# Define the project directory
-PROJECT_DIR="$PWD"
-echo "Project directory: $PROJECT_DIR"
+    if [ ! -d "$USER_HOME/printer_data/config" ]; then
+        error_msg "Printer config directory not found: $USER_HOME/printer_data/config"
+        exit 1
+    fi
 
-# Create the variables.cfg file in the printer_data directory, if it doesn\'t exist
-if [ ! -f $USER_HOME/printer_data/config/variables.cfg ]; then
-  touch $USER_HOME/printer_data/config/variables.cfg && echo "variables.cfg created successfully." || echo "Error creating variables.cfg."
-fi
+    done_msg
+}
 
-# Copy the project files to the Klipper directory
-cp -f $PROJECT_DIR/plr.cfg $USER_HOME/printer_data/config/ && echo "plr.cfg copied successfully." || echo "Error copying plr.cfg."
-# Auto replace path
-sed -i -E "s|\{USER_HOME\}|$USER_HOME|i" $USER_HOME/printer_data/config/plr.cfg
-sed -i -E "s|\{PLR_DIR\}|$USER_HOME/printer_data/plr|i" $USER_HOME/printer_data/config/plr.cfg
+create_plr_directory() {
+    step "Creating PLR directory"
 
-cp -f $PROJECT_DIR/gcode_shell_command.py $KLIPPER_DIR/klippy/extras/ && echo "gcode_shell_command.py copied successfully." || echo "Error copying gcode_shell_command.py."
+    PLR_DIR="$USER_HOME/printer_data/plr"
 
-# Use rsync to copy, overwriting existing files and create the folder if it does not exist
-rsync $PROJECT_DIR/plr.sh $USER_HOME/printer_data/plr/ && echo "plr.sh copied successfully." || echo "Error copying plr.sh."
-rsync $PROJECT_DIR/clear_plr.sh $USER_HOME/printer_data/plr/ && echo "clear_plr.sh copied successfully." || echo "Error copying clear_plr.sh."
-# Auto replace path
-sed -i -E "s|\{USER_HOME\}|$USER_HOME|i" $USER_HOME/printer_data/plr/plr.sh
-sed -i -E "s|\{USER_HOME\}|$USER_HOME|i" $USER_HOME/printer_data/plr/clear_plr.sh 
-# Make plr.sh & clear_plr.sh executable
-chmod +x $USER_HOME/printer_data/plr/plr.sh && echo "plr.sh made executable." || echo "Error making plr.sh executable."
-chmod +x $USER_HOME/printer_data/plr/clear_plr.sh && echo "clear_plr.sh made executable." || echo "Error making clear_plr.sh executable."
-
-# Check if printer.cfg exists, create it if it doesn\'t
-if [ ! -f $USER_HOME/printer_data/config/printer.cfg ]; then
-    touch $USER_HOME/printer_data/config/printer.cfg && echo "printer.cfg created successfully." || echo "Error creating printer.cfg."
-fi
-
-# Check if the file exists
-if [ ! -f $USER_HOME/printer_data/config/printer.cfg ]; then
-  echo "Error: $USER_HOME/printer_data/config/printer.cfg does not exist."
-fi
-
-# Check if the string is already present in the file
-if grep -Fxq '[include plr.cfg]' $USER_HOME/printer_data/config/printer.cfg; then
-   echo "The string [include plr.cfg] is already present in the file."
-else
-    # Create a temporary file
-    temp_file=$(mktemp)
-
-    # Add the line [include plr.cfg] at the beginning of the file
-    echo "[include plr.cfg]" > "$temp_file"
-    cat $USER_HOME/printer_data/config/printer.cfg >> "$temp_file"
-
-    # Replace the original file with the temporary file
-    mv "$temp_file" $USER_HOME/printer_data/config/printer.cfg
-
-    # Check if the string was added successfully
-    if grep -q '[include plr.cfg]' $USER_HOME/printer_data/config/printer.cfg; then
-        echo "The string [include plr.cfg] was successfully added."
+    if [ ! -d "$PLR_DIR" ]; then
+        mkdir -p "$PLR_DIR"
+        done_msg
     else
-        echo "Error: the string [include plr.cfg] was not added."
+        exists_msg
     fi
-fi
 
-# Check if the variables.cfg file exists
-if [ ! -f $USER_HOME/printer_data/config/variables.cfg ]; then
-  echo "The file $USER_HOME/printer_data/config/variables.cfg does not exist. Creating..."
-  # Attempt to create the variables.cfg file
-  touch $USER_HOME/printer_data/config/variables.cfg
+    # Fix permissions if running with sudo
+    if [ -n "$SUDO_USER" ]; then
+        chown -R "$OWNER":"$OWNER" "$PLR_DIR"
+    fi
+}
 
-    # Check if the file was created successfully
-    if [ -f $USER_HOME/printer_data/config/variables.cfg ]; then
-      echo "The file $USER_HOME/printer_data/config/variables.cfg was created successfully."
+create_symlinks() {
+    step "Creating symlinks"
+
+    PROJECT_DIR="$PWD"
+    KLIPPER_DIR="$USER_HOME/klipper"
+    PLR_DIR="$USER_HOME/printer_data/plr"
+    CONFIG_DIR="$USER_HOME/printer_data/config"
+
+    safe_symlink() {
+        local source="$1"
+        local target="$2"
+
+        if [ ! -f "$source" ] && [ ! -d "$source" ]; then
+            error_msg "source not found: $source"
+            return 1
+        fi
+
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+            error_msg "target exists and is not a symlink: $target"
+            return 1
+        fi
+
+        ln -nfs "$source" "$target"
+
+        # Fix permissions if running with sudo
+        if [ -n "$SUDO_USER" ]; then
+            chown -h "$OWNER":"$OWNER" "$target"
+        fi
+    }
+
+    # Create symlinks
+    safe_symlink "$PROJECT_DIR/plr.sh" "$PLR_DIR/plr.sh"
+    safe_symlink "$PROJECT_DIR/clear_plr.sh" "$PLR_DIR/clear_plr.sh"
+    safe_symlink "$PROJECT_DIR/plr.cfg" "$CONFIG_DIR/plr.cfg"
+    safe_symlink "$PROJECT_DIR/gcode_shell_command.py" "$KLIPPER_DIR/klippy/extras/gcode_shell_command.py"
+    safe_symlink "$PROJECT_DIR/update_plr.cfg" "$CONFIG_DIR/update_plr.cfg"
+
+    done_msg
+}
+
+setup_variables() {
+    step "Creating variables.cfg"
+
+    CONFIG_DIR="$USER_HOME/printer_data/config"
+    VARIABLES_FILE="$CONFIG_DIR/variables.cfg"
+
+    if [ ! -f "$VARIABLES_FILE" ]; then
+        touch "$VARIABLES_FILE"
+        CREATED_FILES+=("$VARIABLES_FILE")
+        done_msg
+
+        # Fix permissions if running with sudo
+        if [ -n "$SUDO_USER" ]; then
+            chown "$OWNER":"$OWNER" "$VARIABLES_FILE"
+        fi
     else
-      echo "Error: Creating the file $USER_HOME/printer_data/config/variables.cfg failed."
+        VARIABLES_EXISTED=true
+        exists_msg
     fi
-  else
-    echo "The file $USER_HOME/printer_data/config/variables.cfg already exists."
-  fi
+}
 
-  # Check if the moonraker.conf file exists
-  if [ ! -f $USER_HOME/printer_data/config/moonraker.conf ]; then
-      echo "The file moonraker.conf does not exist, creating the file..."
-      touch $USER_HOME/printer_data/config/moonraker.conf
-  fi
+display_final_summary() {
+    local template_file="$PWD/variables.cfg"
+    local template_contents="# Template not found: $template_file"
+    if [ -f "$template_file" ]; then
+        template_contents=$(cat "$template_file")
+    fi
 
-  # Check if the string [include update_plr.cfg] is already present in the file
-  if grep -Fxq "[include update_plr.cfg]" $USER_HOME/printer_data/config/moonraker.conf; then
-      echo "The string [include update_plr.cfg] is already present in the file moonraker.conf."
-  else
-      echo "Adding the string [include update_plr.cfg] to the file moonraker.conf..."
-      # Create a temporary file
-      temp_file=$(mktemp)
+    local created_section="  • none"
+    if [ "${#CREATED_FILES[@]}" -gt 0 ]; then
+        created_section=""
+        for created_file in "${CREATED_FILES[@]}"; do
+            created_section+="  • ${created_file}"$'\n'
+        done
+    fi
 
-      # Add the line [include update_plr.cfg] at the beginning of the file
-      echo "[include update_plr.cfg]" > "$temp_file"
-      cat $USER_HOME/printer_data/config/moonraker.conf >> "$temp_file"
+    # Build manual actions - skip template step if variables.cfg was just created
+    local manual_actions="1️⃣  Add the include to printer.cfg:
+    [include plr.cfg]
 
-      # Replace the original file with the temporary file
-      mv "$temp_file" $USER_HOME/printer_data/config/moonraker.conf
-  fi
+2️⃣  Add the include to moonraker.conf:
+    [include update_plr.cfg]"
 
-  # Check if the update_plr.cfg file exists
-  if [ -f $USER_HOME/printer_data/config/update_plr.cfg ]; then
-      echo "The file update_plr.cfg already exists, deleting the file..."
-      rm $USER_HOME/printer_data/config/update_plr.cfg
-  fi
+    if [ "$VARIABLES_EXISTED" = true ]; then
+        manual_actions+="
 
-  # Create a new update_plr.cfg file with cat EOF
-  echo "Creating a new update_plr.cfg file with cat EOF..."
-  cat > $USER_HOME/printer_data/config/update_plr.cfg << EOF
-# plr-klipper update_manager entry
-[update_manager Klipper_PLR]
-type: git_repo
-path: ~/Klipper_PLR
-origin: https://github.com/Pipow-fmf/Klipper_PLR.git
-primary_branch: main
-install_script: install.sh
-is_system_service: False
+3️⃣  Append this template content to $USER_HOME/printer_data/config/variables.cfg:
+
+${template_contents}
+
+4️⃣  In your slicer, add this to AFTER_LAYER_CHANGE:
+    SAVE_PLR_RESUME_DATA
+
+5️⃣  Restart Klipper and Moonraker from the web interface"
+    else
+        manual_actions+="
+
+3️⃣  In your slicer, add this to AFTER_LAYER_CHANGE:
+    SAVE_PLR_RESUME_DATA
+
+4️⃣  Restart Klipper and Moonraker from the web interface"
+    fi
+
+    cat << EOF
+
+🎉 Power Loss Recovery system has been installed!
+
+📄 Created files:
+${created_section}
+
+📋 Manual actions required:
+
+${manual_actions}
+
+🔗 Documentation:
+   Check the README.md for detailed setup instructions
 
 EOF
+}
 
-# Vérifier si le script est exécuté avec sudo
-echo "Check if the script is executed using sudo..."
-if [ -n "$SUDO_USER" ]; then
-    echo "The script is executed using sudo."
-    # La variable SUDO_USER est définie, donc le script est exécuté avec sudo
-    REAL_USER="$SUDO_USER"
-    echo "Utilisateur réel (SUDO_USER) : $REAL_USER"
-    
-    echo "Personal path of real users (USER_HOME) : $USER_HOME"
-    
-    echo "Execute the chown command of $USER_HOME/printer_data/config/ avec $OWNER:$OWNER"
-    # Exécuter la commande chown avec les droits de l\'utilisateur spécifique (pi:pi pour runner, sinon SUDO_USER)
-    chown -R "$OWNER":"$OWNER" "$USER_HOME/printer_data/config/"
-    echo "Execute the chown command."
-else
-    echo "This script is not executed using sudo."
-fi
+# ============================================================================
+# Main Installation Flow
+# ============================================================================
 
-    # Print a message to the user
-    echo "Installation complete"
+main() {
+    check_environment
+    create_plr_directory
+    create_symlinks
+    setup_variables
+    display_final_summary
+}
 
-#end of script
+# Run main function
+main "$@"
 
+# End of script
