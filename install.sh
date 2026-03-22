@@ -49,8 +49,6 @@ check_environment() {
     fi
 
     KLIPPER_DIR="$USER_HOME/klipper"
-    PROJECT_DIR="$PWD"
-
     if [ ! -d "$KLIPPER_DIR/klippy/extras" ]; then
         error_msg "Klipper extras directory not found: $KLIPPER_DIR/klippy/extras"
         exit 1
@@ -113,11 +111,11 @@ create_symlinks() {
     }
 
     # Create symlinks
-    safe_symlink "$PROJECT_DIR/plr.sh" "$PLR_DIR/plr.sh"
-    safe_symlink "$PROJECT_DIR/clear_plr.sh" "$PLR_DIR/clear_plr.sh"
-    safe_symlink "$PROJECT_DIR/plr.cfg" "$CONFIG_DIR/plr.cfg"
-    safe_symlink "$PROJECT_DIR/gcode_shell_command.py" "$KLIPPER_DIR/klippy/extras/gcode_shell_command.py"
-    safe_symlink "$PROJECT_DIR/update_plr.cfg" "$CONFIG_DIR/update_plr.cfg"
+    safe_symlink "$PROJECT_DIR/plr/plr.sh" "$PLR_DIR/plr.sh"
+    safe_symlink "$PROJECT_DIR/plr/clear_plr.sh" "$PLR_DIR/clear_plr.sh"
+    safe_symlink "$PROJECT_DIR/plr/plr.cfg" "$CONFIG_DIR/plr.cfg"
+    safe_symlink "$PROJECT_DIR/plr/gcode_shell_command.py" "$KLIPPER_DIR/klippy/extras/gcode_shell_command.py"
+    safe_symlink "$PROJECT_DIR/plr/update_plr.cfg" "$CONFIG_DIR/update_plr.cfg"
 
     done_msg
 }
@@ -144,7 +142,7 @@ setup_variables() {
 }
 
 display_final_summary() {
-    local template_file="$PWD/variables.cfg"
+    local template_file="$PWD/plr/variables.cfg"
     local template_contents="# Template not found: $template_file"
     if [ -f "$template_file" ]; then
         template_contents=$(cat "$template_file")
