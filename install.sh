@@ -86,7 +86,6 @@ create_symlinks() {
     PROJECT_DIR="$PWD"
     KLIPPER_DIR="$USER_HOME/klipper"
     PLR_DIR="$USER_HOME/printer_data/plr"
-    CONFIG_DIR="$USER_HOME/printer_data/config"
 
     safe_symlink() {
         local source="$1"
@@ -113,9 +112,9 @@ create_symlinks() {
     # Create symlinks
     safe_symlink "$PROJECT_DIR/plr/plr.sh" "$PLR_DIR/plr.sh"
     safe_symlink "$PROJECT_DIR/plr/clear_plr.sh" "$PLR_DIR/clear_plr.sh"
-    safe_symlink "$PROJECT_DIR/plr/plr.cfg" "$CONFIG_DIR/plr.cfg"
+    safe_symlink "$PROJECT_DIR/plr/plr.cfg" "$PLR_DIR/plr.cfg"
+    safe_symlink "$PROJECT_DIR/plr/update_plr.cfg" "$PLR_DIR/update_plr.cfg"
     safe_symlink "$PROJECT_DIR/plr/gcode_shell_command.py" "$KLIPPER_DIR/klippy/extras/gcode_shell_command.py"
-    safe_symlink "$PROJECT_DIR/plr/update_plr.cfg" "$CONFIG_DIR/update_plr.cfg"
 
     done_msg
 }
@@ -158,10 +157,10 @@ display_final_summary() {
 
     # Build manual actions - skip template step if variables.cfg was just created
     local manual_actions="1️⃣  Add the include to printer.cfg:
-    [include plr.cfg]
+    [include ../plr/plr.cfg]
 
 2️⃣  Add the include to moonraker.conf:
-    [include update_plr.cfg]"
+    [include ../plr/update_plr.cfg]"
 
     if [ "$VARIABLES_EXISTED" = true ]; then
         manual_actions+="
